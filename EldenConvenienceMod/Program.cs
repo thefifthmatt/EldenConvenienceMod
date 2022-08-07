@@ -54,7 +54,6 @@ namespace EldenConvenienceMod
             AppDomain.CurrentDomain.AssemblyResolve += (sender, rargs) =>
             {
                 string resourceName = "EldenConvenienceMod." + new AssemblyName(rargs.Name).Name + ".dll";
-                Console.WriteLine(resourceName);
                 using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName))
                 {
                     byte[] assemblyData = new byte[stream.Length];

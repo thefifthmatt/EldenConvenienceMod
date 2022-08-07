@@ -1,12 +1,15 @@
 ﻿This mod is an installer for these minor convenience mods. It also includes a version with all of these pre-installed.
 
 - Unlock all maps
-- Unlock all icons
+- Unlock all icons (only while mod is active)
 - Remove invasion requirement for Varré quest
-- Don't show tutorials
+- Unlock Sites of Grace while riding Torrent
+- Warp from dungeons without defeating the boss
+- Don't show tutorials (regardless of game options)
 - Don't award achievements
-- Additional sell menus
 - Additional weapon upgrade menus
+- Additional purchase menus
+- Additional sell menus
 - Skip Siofra and Nokron flame pillar puzzles
 
 These mods can be uninstalled, too. They will no longer take effect once uninstalled, with the exception of map unlocks, which are permanent for a playthrough.
@@ -37,7 +40,9 @@ To use a preset, either place its contents into the existing `mod` folder, or ed
 
 Skip this step if you're using a preset.
 
-If you have an existing mod folder, run EldenConvenienceMod.exe and select the directory where you wish to install the mods. You can select individual mods to install and click "Install selected" to install them.
+Run EldenConvenienceMod.exe and select the Elden Ring game exe, then select the directory where you wish to install the mods. In the default Mod Engine setup, this means selecting the directory called `mod`.
+
+You can then select individual mods to install and click "Install selected" to install them.
 
 ### 4. Run the game
 

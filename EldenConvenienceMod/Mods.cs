@@ -1,18 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using SoulsIds;
 using SoulsFormats;
-using Org.BouncyCastle.Crypto;
-using Org.BouncyCastle.Crypto.Engines;
-using Org.BouncyCastle.OpenSsl;
-using static SoulsIds.GameSpec;
-using static EldenConvenienceMod.Installer;
-using System.Reflection;
 using static SoulsFormats.EMEVD.Instruction;
 using static SoulsIds.Events;
 
@@ -26,10 +18,13 @@ namespace EldenConvenienceMod
             Maps,
             Icons,
             Varre,
+            Torrent,
+            Dungeon,
             Tutorials,
             Achievements,
-            Sell,
             Upgrade,
+            Purchase,
+            Sell,
             Siofra,
         }
         public static readonly SortedSet<Mod> NoMods = new SortedSet<Mod>();
@@ -40,12 +35,19 @@ namespace EldenConvenienceMod
         public class ModInfo
         {
             public Mod Type { get; set; }
+            public bool All { get; set; }
             public string DisplayName { get; set; }
             public string Desc { get; set; }
             public string InternalName => Type.ToString().ToLowerInvariant();
         }
         public static readonly List<ModInfo> AllInfos = new List<ModInfo>
         {
+            new ModInfo
+            {
+                DisplayName = "All Mods",
+                Desc = "Install or uninstall all mods at once",
+                All = true,
+            },
             new ModInfo
             {
                 Type = Mod.Maps,
@@ -66,9 +68,21 @@ namespace EldenConvenienceMod
             },
             new ModInfo
             {
+                Type = Mod.Torrent,
+                DisplayName = "Unlock Sites of Grace while riding Torrent",
+                Desc = "Add a new prompt to \"Touch grace\" while on horseback.\nThis does not light the Site of Grace, but allows warping to it",
+            },
+            new ModInfo
+            {
+                Type = Mod.Dungeon,
+                DisplayName = "Warp from dungeons without defeating the boss",
+                Desc = "Allow warping away from catacombs, caves, and tunnels without defeating the boss.\nThis excludes Sealed Tunnel, which uses a separate mechanism",
+            },
+            new ModInfo
+            {
                 Type = Mod.Tutorials,
                 DisplayName = "Don't show tutorials",
-                Desc = "Prevent tutorial popups from appearing in menus and in the world",
+                Desc = "Prevent tutorial popups from appearing in menus and in the world, regardless of game options",
             },
             new ModInfo
             {
@@ -78,15 +92,21 @@ namespace EldenConvenienceMod
             },
             new ModInfo
             {
-                Type = Mod.Sell,
-                DisplayName = "Additional sell menus",
-                Desc = "Sell items at Sites of Grace, Twin Maiden Husks, and Finger Reader Enia",
-            },
-            new ModInfo
-            {
                 Type = Mod.Upgrade,
                 DisplayName = "Additional weapon upgrade menus",
                 Desc = "Upgrade your weapon at Sites of Grace and Twin Maiden Husks",
+            },
+            new ModInfo
+            {
+                Type = Mod.Purchase,
+                DisplayName = "Additional purchase menus",
+                Desc = "Add the main Twin Maiden Husks shop to Sites of Grace (does not include Bell Bearing shops)",
+            },
+            new ModInfo
+            {
+                Type = Mod.Sell,
+                DisplayName = "Additional sell menus",
+                Desc = "Sell items at Sites of Grace, Twin Maiden Husks, and Finger Reader Enia",
             },
             new ModInfo
             {
@@ -105,10 +125,13 @@ namespace EldenConvenienceMod
             [Mod.Maps] = new List<string> { "/event/common.emevd.dcx" },
             [Mod.Icons] = new List<string> { "WorldMapPointParam.param" },
             [Mod.Varre] = new List<string> { "/event/common.emevd.dcx" },
+            [Mod.Torrent] = new List<string> { "/event/common.emevd.dcx", "ActionButtonParam.param", "BonfireWarpParam.param" },
+            [Mod.Dungeon] = new List<string> { "MapDefaultInfoParam.param" },
             [Mod.Tutorials] = tutorialFiles.Select(f => $"/event/{f}.emevd.dcx").Concat(new[] { "TutorialParam.param" }).ToList(),
             [Mod.Achievements] = achievementFiles.Select(f => $"/event/{f}.emevd.dcx").ToList(),
             [Mod.Sell] = new List<string> { "/script/talk/m00_00_00_00.talkesdbnd.dcx", "/script/talk/m11_10_00_00.talkesdbnd.dcx" },
             [Mod.Upgrade] = new List<string> { "/script/talk/m00_00_00_00.talkesdbnd.dcx" },
+            [Mod.Purchase] = new List<string> { "/script/talk/m00_00_00_00.talkesdbnd.dcx" },
             [Mod.Siofra] = new List<string> { "/event/m12_02_00_00.emevd.dcx" },
         };
 
@@ -117,11 +140,24 @@ namespace EldenConvenienceMod
             [Mod.Tutorials] = (2007, 15),
             [Mod.Achievements] = (2003, 28),
         };
-        private static readonly Dictionary<Mod, List<string>> editMachines = new Dictionary<Mod, List<string>>
+        private static readonly Dictionary<Mod, Dictionary<string, List<int>>> editTalkIds = new Dictionary<Mod, Dictionary<string, List<int>>>
         {
             // The actual selling entries are in t102001110_x50 but this would leave entry/select split up
-            [Mod.Sell] = new List<string> { "t000001000_x32", "t102001110_x41", "t102001110_x43", "t102001110_x44", "t102001110_x47", "t102001110_x48", "t600001110_x3" },
-            [Mod.Upgrade] = new List<string> { "t000001000_x32", "t600001110_x3" },
+            [Mod.Sell] = new Dictionary<string, List<int>>
+            {
+                ["t000001000"] = new List<int> { 15000390 }, // Bonfire: Memorize spell
+                ["t102001110"] = new List<int> { 20000009 }, // Enia: anything calling x50, which has Leave in it
+                ["t600001110"] = new List<int> { 26000010 }, // Twin Husks: Purchase
+            },
+            [Mod.Upgrade] = new Dictionary<string, List<int>>
+            {
+                ["t000001000"] = new List<int> { 15000390 }, // Bonfire: Memorize spell
+                ["t600001110"] = new List<int> { 26000010 }, // Twin Husks: Purchase
+            },
+            [Mod.Purchase] = new Dictionary<string, List<int>>
+            {
+                ["t000001000"] = new List<int> { 15000390 }, // Bonfire: Memorize spell
+            },
         };
         private static readonly List<uint> mapInstalledFlags = new List<uint> { 18000021, 6001 };
         // From item randomizer
@@ -147,7 +183,6 @@ namespace EldenConvenienceMod
             [8617] = 62064,  // Map: Deeproot Depths
             [8618] = 62052,  // Map: Consecrated Snowfield
         };
-
 
         internal void Run(
             SortedSet<Mod> install,
@@ -179,11 +214,17 @@ namespace EldenConvenienceMod
             // Use same ids from randomizer... just keep them fixed in the future
             int varreEvent = 19003110;
             int mapEvent = 19003111;
+            int torrentEvent = 1060606000;
+            int torrentAction = 6109;
+            bool torrentEventInstalled = false;
             foreach (KeyValuePair<string, EMEVD> entry in emevds)
             {
                 string map = entry.Key;
                 EMEVD emevd = entry.Value;
-                void addNewEvent(int id, ICollection<EMEVD.Instruction> instrs, EMEVD.Event.RestBehaviorType rest = EMEVD.Event.RestBehaviorType.Default)
+                void addNewEvent(
+                    int id,
+                    ICollection<EMEVD.Instruction> instrs,
+                    EMEVD.Event.RestBehaviorType rest = EMEVD.Event.RestBehaviorType.Default)
                 {
                     EMEVD.Event ev = new EMEVD.Event(id, rest);
                     ev.Instructions.AddRange(instrs);
@@ -248,6 +289,59 @@ namespace EldenConvenienceMod
                         removeEvent(varreEvent);
                     }
                 }
+                if (map == "common" && mods.Contains(Mod.Torrent))
+                {
+                    torrentEventInstalled = emevd.Events.Any(x => x.ID == torrentEvent);
+                    if (install.Contains(Mod.Torrent) || uninstall.Contains(Mod.Torrent))
+                    {
+                        // Redo this every time, just to refresh the list
+                        removeEvent(torrentEvent);
+                    }
+                    if (install.Contains(Mod.Torrent) && allParams.TryGetValue("BonfireWarpParam", out PARAM warpParam))
+                    {
+                        EMEVD.Event ev = new EMEVD.Event(torrentEvent);
+                        // Conditions: Flag is off, bonfire is backread, riding horse, action button on bonfire
+                        // Ideally should forbid this in a boss fight, but none I recall have both a conditional bonfire and horseback
+                        ev.Instructions.AddRange(new List<EMEVD.Instruction>
+                        {
+                            new EMEVD.Instruction(1003, 2, new List<object> { (byte)0, (byte)1, (byte)0, (uint)0 }),
+                            new EMEVD.Instruction(4, 7, new List<object> { (sbyte)0, (uint)0, (byte)1, (byte)0, (float)1 }),
+                            new EMEVD.Instruction(4, 7, new List<object> { (sbyte)-1, (uint)0, (byte)0, (byte)0, (float)1 }),
+                            new EMEVD.Instruction(3, 0, new List<object> { (sbyte)-1, (byte)1, (byte)0, (uint)0 }),
+                            new EMEVD.Instruction(4, 32, new List<object> { (sbyte)1, (uint)10000, (byte)1 }),
+                            new EMEVD.Instruction(3, 24, new List<object> { (sbyte)1, torrentAction, (uint)0 }),
+                            new EMEVD.Instruction(0, 0, new List<object> { (sbyte)-1, (byte)1, (sbyte)1 }),
+                            new EMEVD.Instruction(0, 0, new List<object> { (sbyte)0, (byte)1, (sbyte)-1 }),
+                            new EMEVD.Instruction(1000, 8, new List<object> { (byte)0, (byte)0, (sbyte)1 }),
+                            new EMEVD.Instruction(2003, 66, new List<object> { (byte)0, (uint)0, (byte)1 }),
+                            new EMEVD.Instruction(2007, 2, new List<object> { (byte)13 }),
+                        });
+                        ev.Parameters.AddRange(new List<EMEVD.Parameter>
+                        {
+                            new EMEVD.Parameter(0, 4, 0, 4),
+                            new EMEVD.Parameter(3, 4, 0, 4),
+                            new EMEVD.Parameter(9, 4, 0, 4),
+                            new EMEVD.Parameter(1, 4, 4, 4),
+                            new EMEVD.Parameter(2, 4, 4, 4),
+                            new EMEVD.Parameter(5, 8, 4, 4),
+                        });
+                        emevd.Events.Add(ev);
+                        // All initializations
+                        int slot = 0;
+                        foreach (PARAM.Row row in warpParam.Rows)
+                        {
+                            // Only bother if horse is possible here
+                            int area = (byte)row["areaNo"].Value;
+                            int block = (byte)row["gridXNo"].Value;
+                            if (!(area == 60 || area == 12)) continue;
+                            uint flag = (uint)row["eventflagId"].Value;
+                            uint asset = (uint)row["bonfireEntityId"].Value;
+                            // This offset appears to be consistently used in Elden Ring (weirder in other games)
+                            uint chr = asset - 1000;
+                            emevd.Events[0].Instructions.Add(new EMEVD.Instruction(2000, 0, new List<object> { slot++, torrentEvent, flag, chr }));
+                        }
+                    }
+                }
                 if (map == "m12_02_00_00" && mods.Contains(Mod.Siofra))
                 {
                     bool allInstalled = true;
@@ -309,13 +403,13 @@ namespace EldenConvenienceMod
                 if (!AST.ParseMachine(parts[1], out int machine)) throw new Exception($"Internal error: badly format {name}");
                 return (parts[0], machine);
             }
-            Dictionary<(string, int), List<Mod>> machineMods = editMachines
+            Dictionary<(string, int), List<Mod>> esdModes = editTalkIds
                 .Where(e => mods.Contains(e.Key))
-                .SelectMany(e => e.Value.Select(m => (e.Key, m)))
+                .SelectMany(e => e.Value.SelectMany(esdEntry => esdEntry.Value.Select(msgId => (e.Key, (esdEntry.Key, msgId)))))
                 .GroupBy(e => e.Item2)
-                .ToDictionary(g => parseMachine(g.Key), g => g.Select(e => e.Item1).ToList());
-            List<string> esdNames = machineMods.Select(e => e.Key.Item1).ToList();
-            Dictionary<Mod, SortedSet<(string, int)>> checkedMachines = editMachines
+                .ToDictionary(g => g.Key, g => g.Select(e => e.Item1).ToList());
+            List<string> esdNames = esdModes.Select(e => e.Key.Item1).ToList();
+            Dictionary<Mod, SortedSet<(string, int)>> checkedMachines = editTalkIds
                 .Where(e => mods.Contains(e.Key))
                 .ToDictionary(e => e.Key, e => new SortedSet<(string, int)>());
             foreach (KeyValuePair<string, BND4> entry in esds)
@@ -325,18 +419,24 @@ namespace EldenConvenienceMod
                     string name = GameEditor.BaseName(bndFile.Name);
                     if (!esdNames.Contains(name)) continue;
                     ESD esd = ESD.Read(bndFile.Bytes);
-                    foreach (KeyValuePair<(string, int), List<Mod>> edit in machineMods)
+                    foreach (KeyValuePair<(string, int), List<Mod>> edit in esdModes)
                     {
-                        if (edit.Key.Item1 == name
-                            && esd.StateGroups.TryGetValue(edit.Key.Item2, out Dictionary<long, ESD.State> machine))
+                        (string esdId, int msgId) = edit.Key;
+                        if (esdId == name)
                         {
-                            foreach (Mod mod in edit.Value.OrderByDescending(x => x))
+                            foreach (Mod mod in edit.Value.OrderBy(x => x))
                             {
-                                bool isInstalled = RunMachine(
-                                    machine,
-                                    mod,
-                                    install.Contains(mod),
-                                    uninstall.Contains(mod));
+                                List<long> machineIds = ESDEdits.FindMachinesWithTalkData(esd, msgId);
+                                if (machineIds.Count == 0) continue;
+                                bool isInstalled = true;
+                                foreach (long machineId in machineIds)
+                                {
+                                    isInstalled &= RunMachine(
+                                        esd.StateGroups[machineId],
+                                        mod,
+                                        install.Contains(mod),
+                                        uninstall.Contains(mod));
+                                }
                                 if (isInstalled)
                                 {
                                     checkedMachines[mod].Add(edit.Key);
@@ -352,7 +452,7 @@ namespace EldenConvenienceMod
             }
             foreach (KeyValuePair<Mod, SortedSet<(string, int)>> entry in checkedMachines)
             {
-                if (entry.Value.Count == editMachines[entry.Key].Count)
+                if (entry.Value.Count == editTalkIds[entry.Key].Count)
                 {
                     check.Add(entry.Key);
                 }
@@ -360,6 +460,60 @@ namespace EldenConvenienceMod
 
             // Params
             PARAM param;
+            // MapDefaultInfoParam.txt:30070000[EnableFastTravelEventFlagId]
+            if (mods.Contains(Mod.Torrent) && allParams.TryGetValue("ActionButtonParam", out param))
+            {
+                if (param[torrentAction] != null)
+                {
+                    if (torrentEventInstalled)
+                    {
+                        check.Add(Mod.Torrent);
+                    }
+                    if (uninstall.Contains(Mod.Torrent))
+                    {
+                        param.Rows.RemoveAll(r => r.ID == torrentAction);
+                    }
+                }
+                if (install.Contains(Mod.Torrent))
+                {
+                    PARAM.Row touchRow = param[6100];
+                    PARAM.Row row = new PARAM.Row(torrentAction, null, param.AppliedParamdef);
+                    GameEditor.CopyRow(touchRow, row);
+                    // Higher priority?
+                    row["category"].Value = (byte)2;
+                    row["isGrayoutForRide"].Value = (byte)0;
+                    // Larger range. 1.5 by default
+                    row["radius"].Value = 3f;
+                    param.Rows.Add(row);
+                }
+            }
+            if (mods.Contains(Mod.Dungeon) && allParams.TryGetValue("MapDefaultInfoParam", out param))
+            {
+                bool allInstalled = true;
+                foreach (PARAM.Row row in param.Rows)
+                {
+                    if (row.ID < 30000000 || row.ID >= 33000000) continue;
+                    // Overwrite this one way or another, don't check previous value
+                    uint flag = (uint)row["EnableFastTravelEventFlagId"].Value;
+                    uint rowFlag = (uint)(row.ID + 800);
+                    allInstalled &= flag == 0;
+#if DEBUG
+                    if (flag > 10000000 && flag != rowFlag) throw new Exception($"Mismatched map {row.ID} flag {flag}, expected {rowFlag}");
+#endif
+                    if (install.Contains(Mod.Dungeon))
+                    {
+                        row["EnableFastTravelEventFlagId"].Value = (uint)0;
+                    }
+                    else if (uninstall.Contains(Mod.Dungeon))
+                    {
+                        row["EnableFastTravelEventFlagId"].Value = (uint)rowFlag;
+                    }
+                }
+                if (allInstalled)
+                {
+                    check.Add(Mod.Dungeon);
+                }
+            }
             if (mods.Contains(Mod.Tutorials) && allParams.TryGetValue("TutorialParam", out param))
             {
                 bool allInstalled = eventTutorials;
@@ -428,174 +582,93 @@ namespace EldenConvenienceMod
             bool install,
             bool uninstall)
         {
-            // action:20000011:"Sell"
-            // action:22130001:"Strengthen armament"
-            int msg = mod == Mod.Sell ? 20000011 : 22130001;
-            int leaveMsg = 20000009;
-            int talkListId = mod == Mod.Sell ? 65 : 66;
-            int talkState = mod == Mod.Sell ? 65 : 66;
-            bool isInstalled = false;
-
-            // Required
-            long loopId = -1;
-            long entryId = -1;
-            long checkId = -1;
-            foreach (KeyValuePair<long, ESD.State> stateEntry in machine)
-            {
-                ESD.State state = stateEntry.Value;
-                // ClearTalkListData c1_20
-                if (state.EntryCommands.Any(c => c.CommandBank == 1 && c.CommandID == 20)) loopId = stateEntry.Key;
-                // AddTalkListData c1_19
-                // There may be multiple states like this, so finding the last one is fine
-                if (state.EntryCommands.Any(c => c.CommandBank == 1 && c.CommandID == 19)) entryId = stateEntry.Key;
-                // GetTalkListEntryResult f23 == 3 condition
-                foreach (ESD.Condition cond in state.Conditions)
-                {
-                    bool found = false;
-                    AST.AstVisitor talkListEntryVisitor = AST.AstVisitor.PostAct(expr =>
-                    {
-                        found |= expr is AST.FunctionCall call && call.Name == "f23";
-                    });
-                    AST.DisassembleExpression(cond.Evaluator).Visit(talkListEntryVisitor);
-                    if (found)
-                    {
-                        checkId = stateEntry.Key;
-                        break;
-                    }
-                }
-            }
-            if (loopId == -1 || entryId == -1 || checkId == -1)
-            {
-                if (install)
-                {
-                    throw new Exception($"Can't install {mod} mod: ESD missing states {loopId} {entryId} {checkId}");
-                }
-                // If it can't be installed, don't count it as such
-                return false;
-            }
-            bool isTalkEntry(ESD.CommandCall c, int findMsg)
-            {
-                if (findMsg == -1) return (c.CommandBank == 1 || c.CommandBank == 5) && c.CommandID == 19;
-                return c.CommandBank == 1 && c.CommandID == 19 && c.Arguments.Count == 3
-                    && AST.DisassembleExpression(c.Arguments[1]) is AST.ConstExpr con
-                    && con.AsInt() == findMsg;
-            }
-
-            // Search for existing talk list entry
-            ESD.CommandCall existingEntry = machine[entryId].EntryCommands.Find(c => isTalkEntry(c, msg));
-            isInstalled = existingEntry != null;
-
-            if (!install && !uninstall) return isInstalled;
-
-            // If it exists, try to uninstall it
-            List<int> usedTalkIds = new List<int>();
-            if (isInstalled)
-            {
-                machine[entryId].EntryCommands.Remove(existingEntry);
-                int findCheck = -1;
-                if (AST.DisassembleExpression(existingEntry.Arguments[0]) is AST.ConstExpr talkCon)
-                {
-                    findCheck = talkCon.AsInt();
-                }
-                // Find condition
-                ESD.Condition existingCond = null;
-                foreach (ESD.Condition cond in machine[checkId].Conditions)
-                {
-                    int talkCheck = -1;
-                    AST.AstVisitor talkListEntryVisitor = AST.AstVisitor.PostAct(expr =>
-                    {
-                        // For the moment, check for things of the form GetTalkListEntryResult() == 7
-                        if (expr is AST.BinaryExpr bin
-                            && bin.Lhs is AST.FunctionCall call && call.Name == "f23"
-                            && bin.Rhs is AST.ConstExpr con) {
-                            talkCheck = con.AsInt();
-                        }
-                    });
-                    AST.DisassembleExpression(cond.Evaluator).Visit(talkListEntryVisitor);
-                    if (talkCheck != -1)
-                    {
-                        usedTalkIds.Add(talkCheck);
-                        if (existingCond == null && talkCheck == findCheck)
-                        {
-                            existingCond = cond;
-                        }
-                    }
-                }
-                if (existingCond != null)
-                {
-                    machine[checkId].Conditions.Remove(existingCond);
-                    if (existingCond.TargetState is long destState)
-                    {
-                        machine.Remove(destState);
-                    }
-                }
-            }
-            if (!install) return isInstalled;
-
-            // If we're installing, find an unused state and talk list id
-            while (machine.ContainsKey(talkState)) talkState++;
-            while (usedTalkIds.Contains(talkListId)) talkListId++;
-
-            // Add new talk list entry
-            ESD.State entryState = machine[entryId];
-            int leaveEntry = entryState.EntryCommands.FindLastIndex(c => isTalkEntry(c, leaveMsg));
-            if (leaveEntry == -1)
-            {
-                // Prefer to put it before the "Leave" command
-                // Otherwise, avoid interfering with non-talk commands, if possible
-                leaveEntry = entryState.EntryCommands.FindLastIndex(c => isTalkEntry(c, -1));
-                leaveEntry = leaveEntry == -1 ? entryState.EntryCommands.Count : leaveEntry + 1;
-            }
-            ESD.CommandCall newEntry = AST.MakeCommand(1, 19, talkListId, msg, -1);
-            entryState.EntryCommands.Insert(leaveEntry, newEntry);
-
-            long baseId = talkState;
-            (long resultStateId, ESD.State resultState) = AST.AllocateState(machine, ref baseId);
-
+            // TODO: Migrate to ESDEdits
+            ESDEdits.CustomTalkData data;
             if (mod == Mod.Sell)
             {
-                // c1_46 OpenSellShop(-1, -1)
-                // c1_141(6)
-                resultState.EntryCommands.AddRange(new List<ESD.CommandCall>
+                data = new ESDEdits.CustomTalkData
                 {
-                    AST.MakeCommand(1, 46, -1, -1),
-                    AST.MakeCommand(1, 141, 6),
-                });
+                    LeaveMsg = 20000009,
+                    Msg = 20000011,
+                    ConsistentID = 65,
+                };
             }
-            else
+            else if (mod == Mod.Upgrade)
             {
-                // c1_49 CombineMenuFlagAndEventFlag(6001, 232) - also 233 234 235
-                // c1_141(9)
-                // c1_24 OpenEnhanceShop(0)
-                resultState.EntryCommands.AddRange(new List<ESD.CommandCall>
+                data = new ESDEdits.CustomTalkData
                 {
-                    AST.MakeCommand(1, 49, 6001, 232),
-                    AST.MakeCommand(1, 49, 6001, 233),
-                    AST.MakeCommand(1, 49, 6001, 234),
-                    AST.MakeCommand(1, 49, 6001, 235),
-                    AST.MakeCommand(1, 141, 9),
-                    AST.MakeCommand(1, 24, 0),
-                });
+                    LeaveMsg = 20000009,
+                    Msg = 22130001,
+                    ConsistentID = 66,
+                };
             }
-
-            // f59 CheckSpecificPersonMenuIsOpen
-            // f58 CheckSpecificPersonGenericDialogIsOpen
-            // Sell shop:
-            // f59 f58 assert not (CheckSpecificPersonMenuIsOpen(6, 0) == 1 and not CheckSpecificPersonGenericDialogIsOpen(0))
-            // Strengthen shop:
-            // f59 f58 assert not (CheckSpecificPersonMenuIsOpen(9, 0) == 1 and not CheckSpecificPersonGenericDialogIsOpen(0))
-            int waitType = mod == Mod.Sell ? 6 : 9;
-            AST.Expr waitExpr = new AST.BinaryExpr
+            else if (mod == Mod.Purchase)
             {
-                Op = "||",
-                Lhs = new AST.BinaryExpr { Op = "==", Lhs = AST.MakeFunction("f59", waitType, 0), Rhs = AST.MakeVal(0) },
-                Rhs = AST.MakeFunction("f58", 0),
-            };
-            resultState.Conditions.Add(new ESD.Condition(loopId, AST.AssembleExpression(waitExpr)));
+                data = new ESDEdits.CustomTalkData
+                {
+                    LeaveMsg = 20000009,
+                    Msg = 26000010,
+                    ConsistentID = 67,
+                };
+            }
+            else throw new Exception($"Internal error: unknown ESD mod {mod}");
 
-            // Add talk condition for state
-            AST.Expr buyCond = new AST.BinaryExpr { Op = "==", Lhs = AST.MakeFunction("f23"), Rhs = AST.MakeVal(talkListId) };
-            machine[checkId].Conditions.Insert(0, new ESD.Condition(resultStateId, AST.AssembleExpression(buyCond)));
+            bool isInstalled = ESDEdits.ModifyCustomTalkEntry(machine, data, install, uninstall, out long resultStateId);
+            // (long resultStateId, ESD.State resultState) = AST.AllocateState(machine, ref baseId);
+            if (machine.TryGetValue(resultStateId, out ESD.State resultState))
+            {
+                int waitType;
+                if (mod == Mod.Sell)
+                {
+                    // c1_46 OpenSellShop(-1, -1)
+                    // c1_141(6)
+                    resultState.EntryCommands.AddRange(new List<ESD.CommandCall>
+                    {
+                        AST.MakeCommand(1, 46, -1, -1),
+                        AST.MakeCommand(1, 141, 6),
+                    });
+                    waitType = 6;
+                }
+                else if (mod == Mod.Upgrade)
+                {
+                    // c1_49 CombineMenuFlagAndEventFlag(6001, 232) - also 233 234 235
+                    // c1_141(9)
+                    // c1_24 OpenEnhanceShop(0)
+                    resultState.EntryCommands.AddRange(new List<ESD.CommandCall>
+                    {
+                        AST.MakeCommand(1, 49, 6001, 232),
+                        AST.MakeCommand(1, 49, 6001, 233),
+                        AST.MakeCommand(1, 49, 6001, 234),
+                        AST.MakeCommand(1, 49, 6001, 235),
+                        AST.MakeCommand(1, 141, 9),
+                        AST.MakeCommand(1, 24, 0),
+                    });
+                    waitType = 9;
+                }
+                else if (mod == Mod.Purchase)
+                {
+                    // c1_22 OpenRegularShop(101800, 101899)
+                    resultState.EntryCommands.AddRange(new List<ESD.CommandCall>
+                    {
+                        AST.MakeCommand(1, 22, 101800, 101899),
+                    });
+                    waitType = 5;
+                }
+                else throw new Exception();
+
+                // f59 CheckSpecificPersonMenuIsOpen
+                // f58 CheckSpecificPersonGenericDialogIsOpen
+                // Sell shop:
+                // f59 f58 assert not (CheckSpecificPersonMenuIsOpen(6, 0) == 1 and not CheckSpecificPersonGenericDialogIsOpen(0))
+                // Strengthen shop: 9 instead. Purchase: 5 instead.
+                AST.Expr waitExpr = new AST.BinaryExpr
+                {
+                    Op = "||",
+                    Lhs = new AST.BinaryExpr { Op = "==", Lhs = AST.MakeFunction("f59", waitType, 0), Rhs = AST.MakeVal(0) },
+                    Rhs = AST.MakeFunction("f58", 0),
+                };
+                resultState.Conditions[0].Evaluator = AST.AssembleExpression(waitExpr);
+            }
 
             return isInstalled;
         }

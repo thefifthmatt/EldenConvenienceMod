@@ -13,6 +13,7 @@ using System.Windows.Forms;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using EldenConvenienceMod.Properties;
 using static EldenConvenienceMod.Mods;
+using static EldenConvenienceMod.ModControl;
 
 namespace EldenConvenienceMod
 {
@@ -35,9 +36,11 @@ namespace EldenConvenienceMod
                 modpanel.Controls.Add(c);
                 c.Location = new Point(0, height);
                 height += c.Height;
+                c.CheckChanged += ModChanged;
             }
-            Height += height;
+            Height += modpanel.Height;
             MinimumSize = Size;
+            MaximumSize = new Size(int.MaxValue, Size.Height);
 
             bool fresh = false;
 #if DEBUG
@@ -67,8 +70,53 @@ namespace EldenConvenienceMod
                 // selfDir is probably fine to save, as it should change when the install loc changes
                 moddirL.Text = selfDir;
             }
-
             CheckInstalled();
+        }
+
+        private void ModChanged(object sender, EventArgs e)
+        {
+            if (!(sender is ModControl mod)) return;
+            if (mod.Mod.All)
+            {
+                InstallState allState = mod.State;
+                if (allState != InstallState.None)
+                {
+                    foreach (ModControl m in modpanel.Controls)
+                    {
+                        if (m.Mod.All) continue;
+                        m.State = allState;
+                    }
+                }
+            }
+            else
+            {
+                // Just recalculate overall state, update accordingly
+                InstallState? overall = null;
+                foreach (ModControl m in modpanel.Controls)
+                {
+                    if (m.Mod.All) continue;
+                    InstallState state = m.State;
+                    if (overall is null)
+                    {
+                        overall = state;
+                    }
+                    else if (overall is InstallState current && current != InstallState.None)
+                    {
+                        if (current != state)
+                        {
+                            overall = InstallState.None;
+                        }
+                    }
+                }
+                foreach (ModControl m in modpanel.Controls)
+                {
+                    if (!m.Mod.All) continue;
+                    if (overall is InstallState state)
+                    {
+                        m.State = state;
+                    }
+                }
+            }
         }
 
         private async void CheckInstalled()
@@ -101,10 +149,20 @@ namespace EldenConvenienceMod
 #if DEBUG
             Console.WriteLine($"Installed: [{string.Join(", ", installed)}]");
 #endif
+            bool allInstalled = true;
             foreach (Control sub in modpanel.Controls)
             {
                 ModControl c = (ModControl)sub;
-                c.SetInstalled(true, installed.Contains(c.Mod.Type));
+                if (c.Mod.All) continue;
+                bool state = installed.Contains(c.Mod.Type);
+                allInstalled &= state;
+                c.SetInstalled(true, state);
+            }
+            foreach (Control sub in modpanel.Controls)
+            {
+                ModControl c = (ModControl)sub;
+                if (!c.Mod.All) continue;
+                c.SetInstalled(true, allInstalled);
             }
         }
 
@@ -125,6 +183,7 @@ namespace EldenConvenienceMod
                 Settings.Default.gameexe = gameexeL.Text;
                 Settings.Default.Save();
             }
+            delayCheckInstalled();
         }
 
         private void moddirB_Click(object sender, EventArgs e)
@@ -195,6 +254,7 @@ namespace EldenConvenienceMod
             foreach (Control sub in modpanel.Controls)
             {
                 ModControl c = (ModControl)sub;
+                if (c.Mod.All) continue;
                 if (c.ShouldInstall) install.Add(c.Mod.Type);
                 if (c.ShouldUninstall) uninstall.Add(c.Mod.Type);
             }
