@@ -1,4 +1,4 @@
-﻿This mod is an installer for these minor convenience mods. It also includes a version with all of these pre-installed.
+﻿This mod is an installer for these minor convenience mods. It can automatically merge itself into any other mod.
 
 - Unlock all maps
 - Unlock all icons (only while mod is active)
@@ -14,7 +14,7 @@
 
 These mods can be uninstalled, too. They will no longer take effect once uninstalled, with the exception of map unlocks, which are permanent for a playthrough.
 
-This installer is intended to work on top of any other ModEngine-based mod, and for any version of Elden Ring. Remember to back up your save file before using ModEngine, and restore your pre-mod save file before going back online.
+This installer is intended to work on top of any other ModEngine-based mod, and for any version of Elden Ring. This is the main reason why it requires running an installer, so it can dynamically use the current Elden Ring version. Remember to back up your save file before using ModEngine, and restore your pre-mod save file before going back online.
 
 **You may include these edits in other mods if you credit this mod.**
 
@@ -30,15 +30,13 @@ If you want to select mods individually, edit an existing mod folder, or presets
 
 Extract the zip file using 7zip or a similar tool.
 
+Make sure the .NET Desktop Runtime >=6.0 is installed, if you don't have it. Use this specific installer link if you run into issues with missing runtimes. https://aka.ms/dotnet/6.0/windowsdesktop-runtime-win-x64.exe
+
 ### 2. Set up Mod Engine
 
-Download the latest version of [Mod Engine 2](https://github.com/soulsmods/ModEngine2/releases).
-
-To use a preset, either place its contents into the existing `mod` folder, or edit `config_eldenring.toml` so that `path` matches the intended mod directory. With the first approach, the `mod` directory should look [like this](https://cdn.discordapp.com/attachments/936393685585780846/971195691206574140/unknown.png).
+Download the latest version of [Mod Engine 2](https://github.com/soulsmods/ModEngine2/releases). Alternatively, use a mod which already has Mod Engine built in, like Item and Enemy Randomizer.
 
 ### 3. Customize
-
-Skip this step if you're using a preset.
 
 Run EldenConvenienceMod.exe and select the Elden Ring game exe, then select the directory where you wish to install the mods. In the default Mod Engine setup, this means selecting the directory called `mod`.
 

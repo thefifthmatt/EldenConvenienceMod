@@ -301,26 +301,28 @@ namespace EldenConvenienceMod
                     {
                         EMEVD.Event ev = new EMEVD.Event(torrentEvent);
                         // Conditions: Flag is off, bonfire is backread, riding horse, action button on bonfire
-                        // Ideally should forbid this in a boss fight, but none I recall have both a conditional bonfire and horseback
+                        // This shouldn't allow sequence breaking: Fire Giant grace is after the fog wall. Can add a condition for that if needed.
                         ev.Instructions.AddRange(new List<EMEVD.Instruction>
                         {
                             new EMEVD.Instruction(1003, 2, new List<object> { (byte)0, (byte)1, (byte)0, (uint)0 }),
-                            new EMEVD.Instruction(4, 7, new List<object> { (sbyte)0, (uint)0, (byte)1, (byte)0, (float)1 }),
-                            new EMEVD.Instruction(4, 7, new List<object> { (sbyte)-1, (uint)0, (byte)0, (byte)0, (float)1 }),
+                            new EMEVD.Instruction(5, 10, new List<object> { (sbyte)0, (uint)0, (byte)1, (byte)0, (float)1 }),
+                            new EMEVD.Instruction(5, 10, new List<object> { (sbyte)-1, (uint)0, (byte)0, (byte)0, (float)1 }),
                             new EMEVD.Instruction(3, 0, new List<object> { (sbyte)-1, (byte)1, (byte)0, (uint)0 }),
                             new EMEVD.Instruction(4, 32, new List<object> { (sbyte)1, (uint)10000, (byte)1 }),
                             new EMEVD.Instruction(3, 24, new List<object> { (sbyte)1, torrentAction, (uint)0 }),
                             new EMEVD.Instruction(0, 0, new List<object> { (sbyte)-1, (byte)1, (sbyte)1 }),
                             new EMEVD.Instruction(0, 0, new List<object> { (sbyte)0, (byte)1, (sbyte)-1 }),
-                            new EMEVD.Instruction(1000, 8, new List<object> { (byte)0, (byte)0, (sbyte)1 }),
+                            new EMEVD.Instruction(1000, 8, new List<object> { (byte)1, (byte)0, (sbyte)1 }),
                             new EMEVD.Instruction(2003, 66, new List<object> { (byte)0, (uint)0, (byte)1 }),
                             new EMEVD.Instruction(2007, 2, new List<object> { (byte)13 }),
                         });
                         ev.Parameters.AddRange(new List<EMEVD.Parameter>
                         {
+                            // Flag
                             new EMEVD.Parameter(0, 4, 0, 4),
                             new EMEVD.Parameter(3, 4, 0, 4),
                             new EMEVD.Parameter(9, 4, 0, 4),
+                            // Asset
                             new EMEVD.Parameter(1, 4, 4, 4),
                             new EMEVD.Parameter(2, 4, 4, 4),
                             new EMEVD.Parameter(5, 8, 4, 4),
@@ -330,15 +332,20 @@ namespace EldenConvenienceMod
                         int slot = 0;
                         foreach (PARAM.Row row in warpParam.Rows)
                         {
-                            // Only bother if horse is possible here
-                            int area = (byte)row["areaNo"].Value;
-                            int block = (byte)row["gridXNo"].Value;
-                            if (!(area == 60 || area == 12)) continue;
-                            uint flag = (uint)row["eventflagId"].Value;
-                            uint asset = (uint)row["bonfireEntityId"].Value;
-                            // This offset appears to be consistently used in Elden Ring (weirder in other games)
-                            uint chr = asset - 1000;
-                            emevd.Events[0].Instructions.Add(new EMEVD.Instruction(2000, 0, new List<object> { slot++, torrentEvent, flag, chr }));
+                            // Only bother if horse is possible here.
+                            // Entity id is more reliable than map coord position, but this tends to overinclude maps, so it should be fine.
+                            byte area = (byte)row["areaNo"].Value;
+                            byte block = (byte)row["gridXNo"].Value;
+                            byte region = (byte)row["gridZNo"].Value;
+                            if (area == 60 || area == 12 || (area == 34 && block == 11))
+                            {
+                                uint flag = (uint)row["eventflagId"].Value;
+                                // We could use chr instead (which is consistently asset-1000), but asset works fine with IfAssetBackread
+                                // The Player is asset-970, but it can't be used with SetPlayerRespawnPoint
+                                uint asset = (uint)row["bonfireEntityId"].Value;
+                                List<object> args = new List<object> { slot++, torrentEvent, flag, asset };
+                                emevd.Events[0].Instructions.Add(new EMEVD.Instruction(2000, 0, args));
+                            }
                         }
                     }
                 }
@@ -388,6 +395,8 @@ namespace EldenConvenienceMod
             {
                 if (entry.Key == Mod.Tutorials && tutorialFiles.All(f => entry.Value.Contains(f)))
                 {
+                    // This is somewhat incompatible with randomizer, which just removes the commands, so they never show up as skipped.
+                    // No real issues result from it. The mod still works.
                     eventTutorials = true;
                 }
                 if (entry.Key == Mod.Achievements && achievementFiles.All(f => entry.Value.Contains(f)))

@@ -25,6 +25,7 @@ namespace EldenConvenienceMod
         {
             ["/event"] = "Data0",
             ["/script/talk"] = "Data0",
+            // MSB, FMGs, AI, SFX are also Data0
         };
 
         public Installer(string modDir, string gameExe = null)
@@ -225,7 +226,7 @@ namespace EldenConvenienceMod
                 if (paramNames.Contains(name))
                 {
                     PARAM param = PARAM.Read(bndFile.Bytes);
-                    if (!param.ApplyParamdefCarefully(defs))
+                    if (!ParamDictionary.ApplyParamdefAggressively(param, defs))
                     {
                         throw new Exception($"Could not read param {name}");
                     }

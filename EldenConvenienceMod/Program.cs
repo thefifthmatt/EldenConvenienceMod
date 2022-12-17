@@ -51,16 +51,6 @@ namespace EldenConvenienceMod
             }
 #endif
             // Application.SetHighDpiMode(HighDpiMode.SystemAware);
-            AppDomain.CurrentDomain.AssemblyResolve += (sender, rargs) =>
-            {
-                string resourceName = "EldenConvenienceMod." + new AssemblyName(rargs.Name).Name + ".dll";
-                using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName))
-                {
-                    byte[] assemblyData = new byte[stream.Length];
-                    stream.Read(assemblyData, 0, assemblyData.Length);
-                    return Assembly.Load(assemblyData);
-                }
-            };
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new MainForm());
